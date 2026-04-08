@@ -1,0 +1,22 @@
+services:
+  gdrive-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gdrive-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - MongoDb__ConnectionString=mongodb://user:password@your-mongo-host:27017/
+      - MongoDb__DatabaseName=gdrive-api
+      - Google__FolderId=YOUR_GOOGLE_DRIVE_FOLDER_ID
+      - Google__ClientId=YOUR_GOOGLE_OAUTH_CLIENT_ID
+      - Google__ClientSecret=YOUR_GOOGLE_OAUTH_CLIENT_SECRET
+      - Google__RefreshToken=YOUR_GOOGLE_OAUTH_REFRESH_TOKEN
+      - Google__BaseDownloadUrl=https://drive.usercontent.google.com/download?id=
+      - Shlink__BaseUrl=https://your-shlink-instance.com
+      - Shlink__ApiKey=YOUR_SHLINK_API_KEY
+      - Shlink__Domain=your-short-domain.com
