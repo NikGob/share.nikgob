@@ -113,7 +113,7 @@ public class FileManagerService(
         var entry = new UploadEntry
         {
             Slug = shlinkResult.ShortCode,
-            FileName = request.File.FileName,
+            FileName = displayName,
             ContentType = request.File.ContentType,
             FileSize = request.File.Length,
             GoogleDriveFileId = gdResult.GoogleDriveFileId,

@@ -94,10 +94,36 @@ The admin token will be printed to the console on first run.
 
 ## Docker
 
+### Docker Compose (recommended)
+
+1. Copy the example file and fill in your values:
+   ```bash
+   cp docker-compose.example.yml docker-compose.yml
+   ```
+2. Edit `docker-compose.yml` — set all environment variables (MongoDB, Google, Shlink).
+3. Start:
+   ```bash
+   docker compose up -d
+   ```
+
+All configuration is passed through environment variables — no need to mount `appsettings.json`.
+
+### Standalone Docker
+
 ```bash
 docker build -t gdrive-api .
 docker run -p 8080:8080 \
-  -v /path/to/appsettings.json:/app/appsettings.json:ro \
+  -e MongoDb__ConnectionString=mongodb://user:password@host:27017/ \
+  -e MongoDb__DatabaseName=gdrive-api \
+  -e Google__FolderId=FOLDER_ID \
+  -e Google__ClientId=CLIENT_ID \
+  -e Google__ClientSecret=CLIENT_SECRET \
+  -e Google__RefreshToken=REFRESH_TOKEN \
+  -e Google__BaseDownloadUrl=https://drive.usercontent.google.com/download?id= \
+  -e Google__ImageDownloadUrl=https://lh3.googleusercontent.com/d/ \
+  -e Shlink__BaseUrl=https://your-shlink-instance.com \
+  -e Shlink__ApiKey=API_KEY \
+  -e Shlink__Domain=your-short-domain.com \
   gdrive-api
 ```
 
@@ -108,9 +134,9 @@ docker run -p 8080:8080 \
 | Method | Endpoint | Description | Auth |
 |---|---|---|---|
 | `POST` | `/upload` | Upload a file (multipart/form-data) | Any |
-| `GET` | `/{slug}` | Get file info by slug | Any |
-| `DELETE` | `/{slug}` | Delete a file | Owner or Admin |
-| `PATCH` | `/{slug}` | Update file metadata | Owner or Admin |
+| `GET` | `/{slug}` | Get file info by slug or short URL | Any |
+| `DELETE` | `/{slug}` | Delete a file by slug or short URL | Owner or Admin |
+| `PATCH` | `/{slug}` | Update file metadata by slug or short URL | Owner or Admin |
 
 ### Collections (`/api/v1/collections`)
 

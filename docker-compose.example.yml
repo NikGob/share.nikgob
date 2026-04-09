@@ -17,6 +17,7 @@ services:
       - Google__ClientSecret=YOUR_GOOGLE_OAUTH_CLIENT_SECRET
       - Google__RefreshToken=YOUR_GOOGLE_OAUTH_REFRESH_TOKEN
       - Google__BaseDownloadUrl=https://drive.usercontent.google.com/download?id=
+      - Google__ImageDownloadUrl=https://lh3.googleusercontent.com/d/
       - Shlink__BaseUrl=https://your-shlink-instance.com
       - Shlink__ApiKey=YOUR_SHLINK_API_KEY
       - Shlink__Domain=your-short-domain.com

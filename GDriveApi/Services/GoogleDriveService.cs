@@ -13,6 +13,7 @@ public class GoogleDriveService : IGoogleDriveService
 {
     private readonly string _folderId;
     private readonly string _baseDownloadUrl;
+    private readonly string _imageDownloadUrl;
     private readonly DriveService _driveService;
 
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -22,12 +23,20 @@ public class GoogleDriveService : IGoogleDriveService
         ".3gpp", ".3gpp2", ".mts", ".m2ts"
     };
 
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg",
+        ".tiff", ".tif", ".ico", ".heic", ".heif", ".avif", ".jfif"
+    };
+
     public GoogleDriveService(IConfiguration configuration)
     {
         _folderId = configuration["Google:FolderId"]
             ?? throw new InvalidOperationException("Google:FolderId is not configured.");
         _baseDownloadUrl = configuration["Google:BaseDownloadUrl"]
             ?? throw new InvalidOperationException("Google:BaseDownloadUrl is not configured.");
+        _imageDownloadUrl = configuration["Google:ImageDownloadUrl"]
+            ?? throw new InvalidOperationException("Google:ImageDownloadUrl is not configured.");
 
         var clientId = configuration["Google:ClientId"]
             ?? throw new InvalidOperationException("Google:ClientId is not configured.");
@@ -98,7 +107,7 @@ public class GoogleDriveService : IGoogleDriveService
         };
         await _driveService.Permissions.Create(permission, fileId).ExecuteAsync();
 
-        var longUrl = GetDirectUrl(fileId);
+        var longUrl = GetDirectUrl(fileId, file.ContentType, Path.GetExtension(file.FileName));
         return new GoogleDriveUploadResult(fileId, longUrl);
     }
 
@@ -114,8 +123,17 @@ public class GoogleDriveService : IGoogleDriveService
         }
     }
 
-    public string GetDirectUrl(string googleDriveFileId)
+    private static bool IsImage(string contentType, string extension)
     {
-        return $"{_baseDownloadUrl}{googleDriveFileId}";
+        return contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+               || ImageExtensions.Contains(extension);
+    }
+
+    public string GetDirectUrl(string googleDriveFileId, string? contentType = null, string? extension = null)
+    {
+        var baseUrl = contentType != null && extension != null && IsImage(contentType, extension)
+            ? _imageDownloadUrl
+            : _baseDownloadUrl;
+        return $"{baseUrl}{googleDriveFileId}";
     }
 }

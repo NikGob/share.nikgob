@@ -14,6 +14,22 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
 {
     private AuthToken CurrentUser => (AuthToken)HttpContext.Items["AuthUser"]!;
 
+    private static string ExtractSlug(string slugOrUrl)
+    {
+        slugOrUrl = Uri.UnescapeDataString(slugOrUrl);
+
+        if (slugOrUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            slugOrUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = new Uri(slugOrUrl).AbsolutePath.TrimEnd('/');
+            var lastSegment = path.Contains('/') ? path[(path.LastIndexOf('/') + 1)..] : path;
+            if (!string.IsNullOrEmpty(lastSegment))
+                return lastSegment;
+        }
+
+        return slugOrUrl;
+    }
+
     [HttpPost("upload")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Upload([FromForm] UploadFileRequest request)
@@ -37,6 +53,7 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
     [HttpGet("{slug}")]
     public async Task<IActionResult> GetInfo(string slug)
     {
+        slug = ExtractSlug(slug);
         try
         {
             var info = await fileManager.GetFileInfoAsync(slug);
@@ -56,6 +73,7 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
     [HttpDelete("{slug}")]
     public async Task<IActionResult> Delete(string slug)
     {
+        slug = ExtractSlug(slug);
         try
         {
             await fileManager.DeleteFileAsync(slug, CurrentUser);
@@ -79,6 +97,7 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
     [HttpPatch("{slug}")]
     public async Task<IActionResult> Update(string slug, [FromBody] UpdateFileRequest request)
     {
+        slug = ExtractSlug(slug);
         try
         {
             var result = await fileManager.UpdateFileAsync(slug, request, CurrentUser);
