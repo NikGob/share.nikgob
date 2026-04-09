@@ -19,7 +19,7 @@ public class UploadFileRequest
 
     public string? CustomFileName { get; set; }
 
-    public bool RenameFile { get; set; } = false;
+    public bool? RenameFile { get; set; }
 
-    public bool NoCompression { get; set; } = false;
+    public bool? NoCompression { get; set; }
 }

@@ -87,7 +87,7 @@ public class FileManagerService(
 
     private static string ResolveDisplayName(UploadFileRequest request)
     {
-        if (request.RenameFile && !string.IsNullOrWhiteSpace(request.CustomFileName))
+        if (request.RenameFile == true && !string.IsNullOrWhiteSpace(request.CustomFileName))
         {
             var name = request.CustomFileName;
             var ext = Path.GetExtension(request.File.FileName);
@@ -106,7 +106,8 @@ public class FileManagerService(
         var slug = ResolveSlug(request.Slug, request.SlugLength);
         var displayName = ResolveDisplayName(request);
 
-        var gdResult = await googleDriveService.UploadFileAsync(request.File, displayName, request.NoCompression);
+        var noCompression = request.NoCompression ?? false;
+        var gdResult = await googleDriveService.UploadFileAsync(request.File, displayName, noCompression);
 
         var shlinkResult = await shlinkService.CreateShortUrlAsync(
             gdResult.LongUrl, slug, request.Title, request.Crawlable);
@@ -124,7 +125,7 @@ public class FileManagerService(
             Title = shlinkResult.Title,
             Crawlable = shlinkResult.Crawlable,
             OwnerId = currentUser.Id,
-            NoCompression = request.NoCompression,
+            NoCompression = noCompression,
             CreatedAt = DateTime.UtcNow
         };
 
