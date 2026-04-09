@@ -165,6 +165,7 @@ docker run -p 8080:8080 \
 | `crawlable` | bool | No | null | Whether the short link is crawlable (Shlink default if omitted) |
 | `customFileName` | string | No | null | Custom display name for the file on Google Drive |
 | `renameFile` | bool | No | false | Use `customFileName` instead of the original filename |
+| `noCompression` | bool | No | false | Skip image compression (use original quality download URL). Ignored for non-image files |
 
 ## License
 

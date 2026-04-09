@@ -48,6 +48,7 @@ public class FileManagerService(
         Collection = e.Collection,
         Title = e.Title,
         Crawlable = e.Crawlable,
+        NoCompression = e.NoCompression,
         UploadedBy = uploaderName ?? string.Empty,
         CreatedAt = e.CreatedAt
     };
@@ -105,7 +106,7 @@ public class FileManagerService(
         var slug = ResolveSlug(request.Slug, request.SlugLength);
         var displayName = ResolveDisplayName(request);
 
-        var gdResult = await googleDriveService.UploadFileAsync(request.File, displayName);
+        var gdResult = await googleDriveService.UploadFileAsync(request.File, displayName, request.NoCompression);
 
         var shlinkResult = await shlinkService.CreateShortUrlAsync(
             gdResult.LongUrl, slug, request.Title, request.Crawlable);
@@ -123,6 +124,7 @@ public class FileManagerService(
             Title = shlinkResult.Title,
             Crawlable = shlinkResult.Crawlable,
             OwnerId = currentUser.Id,
+            NoCompression = request.NoCompression,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -194,12 +196,24 @@ public class FileManagerService(
         }
         else
         {
-            bool needsShlinkUpdate = request.Title != null || request.Crawlable.HasValue;
+            var noCompressionChanged = request.NoCompression.HasValue
+                && request.NoCompression.Value != entry.NoCompression
+                && entry.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+            string? newLongUrl = null;
+            if (noCompressionChanged)
+            {
+                var ext = Path.GetExtension(entry.FileName);
+                newLongUrl = googleDriveService.GetDirectUrl(
+                    entry.GoogleDriveFileId, entry.ContentType, ext, request.NoCompression!.Value);
+            }
+
+            bool needsShlinkUpdate = request.Title != null || request.Crawlable.HasValue || newLongUrl != null;
 
             if (needsShlinkUpdate)
             {
                 var shlinkResult = await shlinkService.UpdateShortUrlAsync(
-                    slug, null, request.Title, request.Crawlable);
+                    slug, newLongUrl, request.Title, request.Crawlable);
 
                 var updates = new List<UpdateDefinition<UploadEntry>>();
 
@@ -207,6 +221,11 @@ public class FileManagerService(
                     updates.Add(Builders<UploadEntry>.Update.Set(e => e.Title, shlinkResult.Title));
                 if (request.Crawlable.HasValue)
                     updates.Add(Builders<UploadEntry>.Update.Set(e => e.Crawlable, shlinkResult.Crawlable));
+                if (noCompressionChanged)
+                {
+                    updates.Add(Builders<UploadEntry>.Update.Set(e => e.NoCompression, request.NoCompression!.Value));
+                    updates.Add(Builders<UploadEntry>.Update.Set(e => e.LongUrl, shlinkResult.LongUrl));
+                }
 
                 if (updates.Count > 0)
                 {
