@@ -6,6 +6,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddHttpClient();
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 
 builder.Services.AddSwaggerGen(options =>
 {
@@ -57,6 +66,7 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI(c => c.DisplayRequestDuration());
 
+app.UseCors();
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
