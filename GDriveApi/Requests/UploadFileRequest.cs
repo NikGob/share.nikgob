@@ -21,5 +21,5 @@ public class UploadFileRequest
 
     public bool? RenameFile { get; set; }
 
-    public bool? NoCompression { get; set; }
+    public bool? SkipImageServing { get; set; }
 }

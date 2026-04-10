@@ -42,8 +42,8 @@ public class UploadEntry
     [BsonElement("ownerId")]
     public ObjectId OwnerId { get; set; }
 
-    [BsonElement("noCompression")]
-    public bool NoCompression { get; set; } = false;
+    [BsonElement("skipImageServing")]
+    public bool SkipImageServing { get; set; } = false;
 
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

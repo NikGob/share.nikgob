@@ -14,7 +14,7 @@ public class FileDto
     public string Collection { get; set; } = string.Empty;
     public string? Title { get; set; }
     public bool? Crawlable { get; set; }
-    public bool NoCompression { get; set; }
+    public bool SkipImageServing { get; set; }
     public string UploadedBy { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 

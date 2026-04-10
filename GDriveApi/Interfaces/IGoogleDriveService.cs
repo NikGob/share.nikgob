@@ -4,7 +4,7 @@ namespace GDriveApi.Interfaces;
 
 public interface IGoogleDriveService
 {
-    Task<GoogleDriveUploadResult> UploadFileAsync(IFormFile file, string fileName, bool noCompression = false);
+    Task<GoogleDriveUploadResult> UploadFileAsync(IFormFile file, string fileName, bool skipImageServing = false);
     Task DeleteFileAsync(string googleDriveFileId);
-    string GetDirectUrl(string googleDriveFileId, string? contentType = null, string? extension = null, bool noCompression = false);
+    string GetDirectUrl(string googleDriveFileId, string? contentType = null, string? extension = null, bool skipImageServing = false);
 }

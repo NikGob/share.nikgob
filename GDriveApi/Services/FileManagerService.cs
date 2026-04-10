@@ -48,7 +48,7 @@ public class FileManagerService(
         Collection = e.Collection,
         Title = e.Title,
         Crawlable = e.Crawlable,
-        NoCompression = e.NoCompression,
+        SkipImageServing = e.SkipImageServing,
         UploadedBy = uploaderName ?? string.Empty,
         CreatedAt = e.CreatedAt
     };
@@ -106,8 +106,8 @@ public class FileManagerService(
         var slug = ResolveSlug(request.Slug, request.SlugLength);
         var displayName = ResolveDisplayName(request);
 
-        var noCompression = request.NoCompression ?? false;
-        var gdResult = await googleDriveService.UploadFileAsync(request.File, displayName, noCompression);
+        var skipImageServing = request.SkipImageServing ?? false;
+        var gdResult = await googleDriveService.UploadFileAsync(request.File, displayName, skipImageServing);
 
         var shlinkResult = await shlinkService.CreateShortUrlAsync(
             gdResult.LongUrl, slug, request.Title, request.Crawlable);
@@ -125,7 +125,7 @@ public class FileManagerService(
             Title = shlinkResult.Title,
             Crawlable = shlinkResult.Crawlable,
             OwnerId = currentUser.Id,
-            NoCompression = noCompression,
+            SkipImageServing = skipImageServing,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -197,16 +197,16 @@ public class FileManagerService(
         }
         else
         {
-            var noCompressionChanged = request.NoCompression.HasValue
-                && request.NoCompression.Value != entry.NoCompression
+            var skipImageServingChanged = request.SkipImageServing.HasValue
+                && request.SkipImageServing.Value != entry.SkipImageServing
                 && entry.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
             string? newLongUrl = null;
-            if (noCompressionChanged)
+            if (skipImageServingChanged)
             {
                 var ext = Path.GetExtension(entry.FileName);
                 newLongUrl = googleDriveService.GetDirectUrl(
-                    entry.GoogleDriveFileId, entry.ContentType, ext, request.NoCompression!.Value);
+                    entry.GoogleDriveFileId, entry.ContentType, ext, request.SkipImageServing!.Value);
             }
 
             bool needsShlinkUpdate = request.Title != null || request.Crawlable.HasValue || newLongUrl != null;
@@ -222,9 +222,9 @@ public class FileManagerService(
                     updates.Add(Builders<UploadEntry>.Update.Set(e => e.Title, shlinkResult.Title));
                 if (request.Crawlable.HasValue)
                     updates.Add(Builders<UploadEntry>.Update.Set(e => e.Crawlable, shlinkResult.Crawlable));
-                if (noCompressionChanged)
+                if (skipImageServingChanged)
                 {
-                    updates.Add(Builders<UploadEntry>.Update.Set(e => e.NoCompression, request.NoCompression!.Value));
+                    updates.Add(Builders<UploadEntry>.Update.Set(e => e.SkipImageServing, request.SkipImageServing!.Value));
                     updates.Add(Builders<UploadEntry>.Update.Set(e => e.LongUrl, shlinkResult.LongUrl));
                 }
 

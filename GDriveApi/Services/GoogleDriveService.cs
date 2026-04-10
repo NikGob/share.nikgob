@@ -67,7 +67,7 @@ public class GoogleDriveService : IGoogleDriveService
         });
     }
 
-    public async Task<GoogleDriveUploadResult> UploadFileAsync(IFormFile file, string displayName, bool noCompression = false)
+    public async Task<GoogleDriveUploadResult> UploadFileAsync(IFormFile file, string displayName, bool skipImageServing = false)
     {
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
 
@@ -107,7 +107,7 @@ public class GoogleDriveService : IGoogleDriveService
         };
         await _driveService.Permissions.Create(permission, fileId).ExecuteAsync();
 
-        var longUrl = GetDirectUrl(fileId, file.ContentType, Path.GetExtension(file.FileName), noCompression);
+        var longUrl = GetDirectUrl(fileId, file.ContentType, Path.GetExtension(file.FileName), skipImageServing);
         return new GoogleDriveUploadResult(fileId, longUrl);
     }
 
@@ -129,10 +129,10 @@ public class GoogleDriveService : IGoogleDriveService
                || ImageExtensions.Contains(extension);
     }
 
-    public string GetDirectUrl(string googleDriveFileId, string? contentType = null, string? extension = null, bool noCompression = false)
+    public string GetDirectUrl(string googleDriveFileId, string? contentType = null, string? extension = null, bool skipImageServing = false)
     {
         var isImage = contentType != null && extension != null && IsImage(contentType, extension);
-        var baseUrl = isImage && !noCompression ? _imageDownloadUrl : _baseDownloadUrl;
+        var baseUrl = isImage && !skipImageServing ? _imageDownloadUrl : _baseDownloadUrl;
         return $"{baseUrl}{googleDriveFileId}";
     }
 }
