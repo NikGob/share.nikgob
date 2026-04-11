@@ -169,4 +169,6 @@ docker run -p 8080:8080 \
 
 ## License
 
-This project is licensed under [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/).
+Copyright (c) 2026 Ignat Kuskildin (NikGob)
+
+This project is licensed under [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.en.html).
