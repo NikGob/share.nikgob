@@ -179,21 +179,46 @@ public class FileManagerService(
 
         if (!string.IsNullOrWhiteSpace(request.NewSlug) && request.NewSlug != slug)
         {
-            var shlinkResult = await shlinkService.ChangeSlugAsync(
-                slug,
+            var shlinkResult = await shlinkService.CreateShortUrlAsync(
                 entry.LongUrl,
                 request.NewSlug,
                 request.Title ?? entry.Title,
                 request.Crawlable ?? entry.Crawlable);
 
-            var update = Builders<UploadEntry>.Update
-                .Set(e => e.Slug, shlinkResult.ShortCode)
-                .Set(e => e.ShortUrl, shlinkResult.ShortUrl)
-                .Set(e => e.Title, shlinkResult.Title)
-                .Set(e => e.Crawlable, shlinkResult.Crawlable);
+            try
+            {
+                var update = Builders<UploadEntry>.Update
+                    .Set(e => e.Slug, shlinkResult.ShortCode)
+                    .Set(e => e.ShortUrl, shlinkResult.ShortUrl)
+                    .Set(e => e.Title, shlinkResult.Title)
+                    .Set(e => e.Crawlable, shlinkResult.Crawlable);
 
-            await mongoDb.Uploads.UpdateOneAsync(
-                Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id), update);
+                await mongoDb.Uploads.UpdateOneAsync(
+                    Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id), update);
+            }
+            catch
+            {
+                try
+                {
+                    await shlinkService.DeleteShortUrlAsync(shlinkResult.ShortCode);
+                }
+                catch (Exception rollbackEx)
+                {
+                    Console.WriteLine(
+                        $"[Shlink] Failed to rollback new short URL '{shlinkResult.ShortCode}' after Mongo update error: {rollbackEx.Message}");
+                }
+
+                throw;
+            }
+
+            try
+            {
+                await shlinkService.DeleteShortUrlAsync(slug);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Shlink] Failed to delete old short URL '{slug}' after slug change: {ex.Message}");
+            }
         }
         else
         {
