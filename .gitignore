@@ -10,6 +10,7 @@ obj/
 .vs/
 .vscode/
 .idea/
+.windsurf/
 *.swp
 
 ## Secrets — NEVER commit real config

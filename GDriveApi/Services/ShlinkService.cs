@@ -114,12 +114,6 @@ public class ShlinkService : IShlinkService
         return ParseShlinkResponse(responseBody);
     }
 
-    public async Task<ShlinkResult> ChangeSlugAsync(string oldSlug, string longUrl, string newSlug, string? title, bool? crawlable)
-    {
-        await DeleteShortUrlAsync(oldSlug);
-        return await CreateShortUrlAsync(longUrl, newSlug, title, crawlable);
-    }
-
     private string BuildShortCodeUrl(string shortCode)
     {
         var url = $"{_baseUrl}/rest/v3/short-urls/{shortCode}";

@@ -8,5 +8,4 @@ public interface IShlinkService
     Task<ShlinkResult> UpdateShortUrlAsync(string shortCode, string? longUrl, string? title, bool? crawlable);
     Task DeleteShortUrlAsync(string shortCode);
     Task<ShlinkResult> GetShortUrlAsync(string shortCode);
-    Task<ShlinkResult> ChangeSlugAsync(string oldSlug, string longUrl, string newSlug, string? title, bool? crawlable);
 }

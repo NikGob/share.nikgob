@@ -131,6 +131,14 @@ public class FileManagerService(
 
         await mongoDb.Uploads.InsertOneAsync(entry);
 
+        await mongoDb.Collections.UpdateOneAsync(
+            Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection),
+            Builders<CollectionEntry>.Update
+                .Inc(c => c.FileCount, 1)
+                .Set(c => c.UpdatedAt, DateTime.UtcNow)
+                .SetOnInsert(c => c.CreatedAt, DateTime.UtcNow),
+            new UpdateOptions { IsUpsert = true });
+
         return ToDto(entry, currentUser.Username);
     }
 
@@ -166,6 +174,16 @@ public class FileManagerService(
 
         await mongoDb.Uploads.DeleteOneAsync(
             Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id));
+
+        await mongoDb.Collections.UpdateOneAsync(
+            Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection),
+            Builders<CollectionEntry>.Update
+                .Inc(c => c.FileCount, -1)
+                .Set(c => c.UpdatedAt, DateTime.UtcNow));
+
+        await mongoDb.Collections.DeleteOneAsync(
+            Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection)
+            & Builders<CollectionEntry>.Filter.Lte(c => c.FileCount, 0));
     }
 
     public async Task<FileDto> UpdateFileAsync(string slug, UpdateFileRequest request, AuthToken currentUser)
@@ -177,10 +195,24 @@ public class FileManagerService(
 
         EnforceOwnership(entry, currentUser);
 
+        var skipImageServingChanged = request.SkipImageServing.HasValue
+            && request.SkipImageServing.Value != entry.SkipImageServing
+            && entry.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+        string? newLongUrl = null;
+        if (skipImageServingChanged)
+        {
+            var ext = Path.GetExtension(entry.FileName);
+            newLongUrl = googleDriveService.GetDirectUrl(
+                entry.GoogleDriveFileId, entry.ContentType, ext, request.SkipImageServing!.Value);
+        }
+
+        var effectiveLongUrl = newLongUrl ?? entry.LongUrl;
+
         if (!string.IsNullOrWhiteSpace(request.NewSlug) && request.NewSlug != slug)
         {
             var shlinkResult = await shlinkService.CreateShortUrlAsync(
-                entry.LongUrl,
+                effectiveLongUrl,
                 request.NewSlug,
                 request.Title ?? entry.Title,
                 request.Crawlable ?? entry.Crawlable);
@@ -192,6 +224,13 @@ public class FileManagerService(
                     .Set(e => e.ShortUrl, shlinkResult.ShortUrl)
                     .Set(e => e.Title, shlinkResult.Title)
                     .Set(e => e.Crawlable, shlinkResult.Crawlable);
+
+                if (skipImageServingChanged)
+                {
+                    update = update
+                        .Set(e => e.SkipImageServing, request.SkipImageServing!.Value)
+                        .Set(e => e.LongUrl, effectiveLongUrl);
+                }
 
                 await mongoDb.Uploads.UpdateOneAsync(
                     Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id), update);
@@ -222,18 +261,6 @@ public class FileManagerService(
         }
         else
         {
-            var skipImageServingChanged = request.SkipImageServing.HasValue
-                && request.SkipImageServing.Value != entry.SkipImageServing
-                && entry.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
-
-            string? newLongUrl = null;
-            if (skipImageServingChanged)
-            {
-                var ext = Path.GetExtension(entry.FileName);
-                newLongUrl = googleDriveService.GetDirectUrl(
-                    entry.GoogleDriveFileId, entry.ContentType, ext, request.SkipImageServing!.Value);
-            }
-
             bool needsShlinkUpdate = request.Title != null || request.Crawlable.HasValue || newLongUrl != null;
 
             if (needsShlinkUpdate)
@@ -265,11 +292,20 @@ public class FileManagerService(
         return await GetFileInfoAsync(request.NewSlug ?? slug);
     }
 
-    public async Task<List<string>> GetCollectionsAsync()
+    public async Task<List<CollectionDto>> GetCollectionsAsync()
     {
-        return await mongoDb.Uploads
-            .DistinctAsync(e => e.Collection, Builders<UploadEntry>.Filter.Empty)
-            .Result.ToListAsync();
+        var entries = await mongoDb.Collections
+            .Find(Builders<CollectionEntry>.Filter.Empty)
+            .SortByDescending(c => c.UpdatedAt)
+            .ToListAsync();
+
+        return entries.Select(c => new CollectionDto
+        {
+            Name = c.Name,
+            FileCount = c.FileCount,
+            CreatedAt = c.CreatedAt,
+            UpdatedAt = c.UpdatedAt
+        }).ToList();
     }
 
     public async Task<List<FileDto>> GetFilesByCollectionAsync(string collection)

@@ -23,4 +23,7 @@ public class MongoDbService
 
     public IMongoCollection<AuthToken> AuthTokens =>
         _database.GetCollection<AuthToken>("auth-tokens");
+
+    public IMongoCollection<CollectionEntry> Collections =>
+        _database.GetCollection<CollectionEntry>("collections");
 }
