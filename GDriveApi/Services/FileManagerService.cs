@@ -152,6 +152,21 @@ public class FileManagerService(
         return await ToDtoWithUsername(entry);
     }
 
+    public async Task<List<string>> GetSlugsAsync(string? collection, int page, int pageSize)
+    {
+        var filter = string.IsNullOrWhiteSpace(collection)
+            ? Builders<UploadEntry>.Filter.Empty
+            : Builders<UploadEntry>.Filter.Eq(e => e.Collection, collection);
+
+        return await mongoDb.Uploads
+            .Find(filter)
+            .SortByDescending(e => e.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize)
+            .Project(e => e.Slug)
+            .ToListAsync();
+    }
+
     public async Task DeleteFileAsync(string slug, AuthToken currentUser)
     {
         var entry = await mongoDb.Uploads

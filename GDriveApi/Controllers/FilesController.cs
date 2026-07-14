@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using GDriveApi.Interfaces;
 using GDriveApi.Middlewares;
 using GDriveApi.Models;
@@ -68,6 +69,16 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
             Console.WriteLine($"[GetInfo] Error: {ex.Message}");
             return StatusCode(500, new { message = "Internal server error." });
         }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetSlugs(
+        [FromQuery] string? collection = null,
+        [FromQuery, Range(1, 1_000_000)] int page = 1,
+        [FromQuery, Range(1, 500)] int pageSize = 100)
+    {
+        var slugs = await fileManager.GetSlugsAsync(collection, page, pageSize);
+        return Ok(slugs);
     }
 
     [HttpDelete("{slug}")]

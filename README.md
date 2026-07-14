@@ -134,6 +134,7 @@ docker run -p 8080:8080 \
 | Method | Endpoint | Description | Auth |
 |---|---|---|---|
 | `POST` | `/upload` | Upload a file (multipart/form-data) | Any |
+| `GET` | `/?page=1&pageSize=100` | List slugs (`collection` filter is optional) | Any |
 | `GET` | `/{slug}` | Get file info by slug or short URL | Any |
 | `DELETE` | `/{slug}` | Delete a file by slug or short URL | Owner or Admin |
 | `PATCH` | `/{slug}` | Update file metadata by slug or short URL | Owner or Admin |

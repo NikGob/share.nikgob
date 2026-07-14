@@ -10,6 +10,7 @@ public interface IFileManagerService
     Task<FileDto> GetFileInfoAsync(string slug);
     Task DeleteFileAsync(string slug, AuthToken currentUser);
     Task<FileDto> UpdateFileAsync(string slug, UpdateFileRequest request, AuthToken currentUser);
+    Task<List<string>> GetSlugsAsync(string? collection, int page, int pageSize);
     Task<List<CollectionDto>> GetCollectionsAsync();
     Task<List<FileDto>> GetFilesByCollectionAsync(string collection);
 }
