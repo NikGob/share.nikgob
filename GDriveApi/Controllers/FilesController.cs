@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+using System.Data;
 using GDriveApi.Interfaces;
 using GDriveApi.Middlewares;
 using GDriveApi.Models;
@@ -71,16 +71,6 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
         }
     }
 
-    [HttpGet]
-    public async Task<IActionResult> GetSlugs(
-        [FromQuery] string? collection = null,
-        [FromQuery, Range(1, 1_000_000)] int page = 1,
-        [FromQuery, Range(1, 500)] int pageSize = 100)
-    {
-        var slugs = await fileManager.GetSlugsAsync(collection, page, pageSize);
-        return Ok(slugs);
-    }
-
     [HttpDelete("{slug}")]
     public async Task<IActionResult> Delete(string slug)
     {
@@ -97,6 +87,10 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(403, new { message = ex.Message });
+        }
+        catch (DBConcurrencyException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
         catch (Exception ex)
         {
@@ -121,6 +115,10 @@ public class FilesController(IFileManagerService fileManager) : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(403, new { message = ex.Message });
+        }
+        catch (DBConcurrencyException ex)
+        {
+            return Conflict(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {

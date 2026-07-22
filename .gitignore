@@ -15,9 +15,18 @@ obj/
 
 ## Secrets — NEVER commit real config
 appsettings.json
-appsettings.Development.json
-google-credentials.json
-docker-compose.yml
+appsettings.*.json
+!appsettings.Example.json
+google-credentials*.json
+docker-compose*.yml
+!docker-compose.example.yml
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
 *.http
 
 ## OS

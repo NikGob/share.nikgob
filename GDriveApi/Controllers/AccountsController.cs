@@ -22,9 +22,10 @@ public class AccountsController(MongoDbService mongoDb) : ControllerBase
         if (CurrentUser.Role != "admin")
             return StatusCode(403, new { message = "Only admins can create accounts." });
 
+        var rawToken = $"{Guid.NewGuid():N}{Guid.NewGuid():N}";
         var token = new AuthToken
         {
-            Token = $"{Guid.NewGuid():N}{Guid.NewGuid():N}",
+            Token = AuthToken.Hash(rawToken),
             Username = request.Username,
             Role = request.Role,
             IsActive = true,
@@ -39,7 +40,7 @@ public class AccountsController(MongoDbService mongoDb) : ControllerBase
             id = token.Id.ToString(),
             username = token.Username,
             role = token.Role,
-            token = token.Token,
+            token = rawToken,
             createdAt = token.CreatedAt
         });
     }

@@ -45,6 +45,14 @@ public class UploadEntry
     [BsonElement("skipImageServing")]
     public bool SkipImageServing { get; set; } = false;
 
+    [BsonElement("isDeleting")]
+    [BsonIgnoreIfDefault]
+    public bool IsDeleting { get; set; }
+
+    [BsonElement("deleteClaimedAt")]
+    [BsonIgnoreIfNull]
+    public DateTime? DeleteClaimedAt { get; set; }
+
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

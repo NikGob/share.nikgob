@@ -16,6 +16,18 @@ public class GoogleDriveService : IGoogleDriveService
     private readonly string _imageDownloadUrl;
     private readonly DriveService _driveService;
 
+    private async Task RollbackUploadAsync(string fileId)
+    {
+        try
+        {
+            await DeleteFileAsync(fileId);
+        }
+        catch (Exception rollbackEx)
+        {
+            Console.WriteLine($"[Rollback] Failed to delete Google Drive file '{fileId}': {rollbackEx.Message}");
+        }
+    }
+
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp4", ".avi", ".mov", ".wmv", ".flv", ".mkv", ".webm",
@@ -94,18 +106,30 @@ public class GoogleDriveService : IGoogleDriveService
             var uploadResult = await request.UploadAsync();
 
             if (uploadResult.Status != UploadStatus.Completed || request.ResponseBody?.Id == null)
+            {
+                if (request.ResponseBody?.Id is { } failedFileId)
+                    await RollbackUploadAsync(failedFileId);
                 throw new InvalidOperationException(
                     $"File upload failed: {uploadResult.Exception?.Message ?? "Unknown error"}");
+            }
         }
 
         var fileId = request.ResponseBody!.Id;
 
-        var permission = new Google.Apis.Drive.v3.Data.Permission
+        try
         {
-            Role = "reader",
-            Type = "anyone"
-        };
-        await _driveService.Permissions.Create(permission, fileId).ExecuteAsync();
+            var permission = new Google.Apis.Drive.v3.Data.Permission
+            {
+                Role = "reader",
+                Type = "anyone"
+            };
+            await _driveService.Permissions.Create(permission, fileId).ExecuteAsync();
+        }
+        catch
+        {
+            await RollbackUploadAsync(fileId);
+            throw;
+        }
 
         var longUrl = GetDirectUrl(fileId, file.ContentType, Path.GetExtension(file.FileName), skipImageServing);
         return new GoogleDriveUploadResult(fileId, longUrl);

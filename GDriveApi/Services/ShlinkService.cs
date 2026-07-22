@@ -54,9 +54,9 @@ public class ShlinkService : IShlinkService
             body["title"] = title;
 
         var json = JsonSerializer.Serialize(body, JsonOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync($"{_baseUrl}/rest/v3/short-urls", content);
+        using var response = await _httpClient.PostAsync($"{_baseUrl}/rest/v3/short-urls", content);
         var responseBody = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
@@ -75,10 +75,10 @@ public class ShlinkService : IShlinkService
         if (crawlable.HasValue) body["crawlable"] = crawlable.Value;
 
         var json = JsonSerializer.Serialize(body, JsonOptions);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var url = BuildShortCodeUrl(shortCode);
-        var response = await _httpClient.PatchAsync(url, content);
+        using var response = await _httpClient.PatchAsync(url, content);
         var responseBody = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
@@ -91,7 +91,10 @@ public class ShlinkService : IShlinkService
     public async Task DeleteShortUrlAsync(string shortCode)
     {
         var url = BuildShortCodeUrl(shortCode);
-        var response = await _httpClient.DeleteAsync(url);
+        using var response = await _httpClient.DeleteAsync(url);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return;
 
         if (!response.IsSuccessStatusCode)
         {
@@ -104,7 +107,7 @@ public class ShlinkService : IShlinkService
     public async Task<ShlinkResult> GetShortUrlAsync(string shortCode)
     {
         var url = BuildShortCodeUrl(shortCode);
-        var response = await _httpClient.GetAsync(url);
+        using var response = await _httpClient.GetAsync(url);
         var responseBody = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
@@ -116,9 +119,9 @@ public class ShlinkService : IShlinkService
 
     private string BuildShortCodeUrl(string shortCode)
     {
-        var url = $"{_baseUrl}/rest/v3/short-urls/{shortCode}";
+        var url = $"{_baseUrl}/rest/v3/short-urls/{Uri.EscapeDataString(shortCode)}";
         if (!string.IsNullOrWhiteSpace(_domain))
-            url += $"?domain={_domain}";
+            url += $"?domain={Uri.EscapeDataString(_domain)}";
         return url;
     }
 
@@ -133,7 +136,7 @@ public class ShlinkService : IShlinkService
             ShortUrl = root.GetProperty("shortUrl").GetString() ?? string.Empty,
             LongUrl = root.GetProperty("longUrl").GetString() ?? string.Empty,
             Title = root.TryGetProperty("title", out var t) ? t.GetString() : null,
-            Crawlable = root.TryGetProperty("crawlable", out var c) && c.GetBoolean()
+            Crawlable = root.TryGetProperty("crawlable", out var c) ? c.GetBoolean() : null
         };
     }
 }

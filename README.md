@@ -34,9 +34,14 @@ This is the most restrictive Google Drive scope suitable for file uploads. See [
 ### Authentication
 
 - All endpoints require a **Bearer token** in the `Authorization` header
-- On first startup (no tokens in DB), an **admin** token is auto-generated and printed to the console
+- On startup without an active admin, an **admin** token is generated and printed to the console
 - Admins create additional admin or user accounts via `POST /api/v1/accounts`
-- Tokens are 64-character hex strings (two GUIDs)
+- Automatically generated tokens are 64-character hex strings
+- MongoDB stores only SHA-256 token hashes; existing plaintext tokens are migrated automatically
+
+To choose the first admin token yourself, set `Auth:InitialAdminToken` in `appsettings.json` or `Auth__InitialAdminToken` in the environment before the first start. It must contain at least 32 characters and no whitespace. You can generate one with `openssl rand -hex 32`. If omitted, read the generated token from the first startup log (`docker compose logs gdrive-api`). Remove this setting after the admin has been created.
+
+The startup migration reads and updates only the `auth-tokens` collection. Existing `uploads` and `collections` documents remain unchanged; the optional deletion-state fields on uploads default safely when absent.
 
 ### Secrets
 
@@ -59,6 +64,7 @@ Edit `appsettings.json` with your credentials:
 |---|---|
 | `MongoDb:ConnectionString` | MongoDB connection string |
 | `MongoDb:DatabaseName` | Database name |
+| `Auth:InitialAdminToken` | Optional first admin token (at least 32 characters) |
 | `Google:FolderId` | Google Drive folder ID for uploads |
 | `Google:ClientId` | OAuth2 Client ID |
 | `Google:ClientSecret` | OAuth2 Client Secret |
@@ -134,7 +140,6 @@ docker run -p 8080:8080 \
 | Method | Endpoint | Description | Auth |
 |---|---|---|---|
 | `POST` | `/upload` | Upload a file (multipart/form-data) | Any |
-| `GET` | `/?page=1&pageSize=100` | List slugs (`collection` filter is optional) | Any |
 | `GET` | `/{slug}` | Get file info by slug or short URL | Any |
 | `DELETE` | `/{slug}` | Delete a file by slug or short URL | Owner or Admin |
 | `PATCH` | `/{slug}` | Update file metadata by slug or short URL | Owner or Admin |
@@ -143,8 +148,10 @@ docker run -p 8080:8080 \
 
 | Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `GET` | `/` | List all collection names | Any |
-| `GET` | `/{name}` | List files in a collection | Any |
+| `GET` | `/` | List collections with file counts | Any |
+| `GET` | `/{name}` | List all files; optional `page`/`pageSize` enable pagination | Any |
+
+Without query parameters, `/{name}` returns the full collection. If either pagination parameter is supplied, the missing value defaults to `page=1` or `pageSize=100`.
 
 ### Accounts (`/api/v1/accounts`)
 

@@ -12,6 +12,8 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - MongoDb__ConnectionString=mongodb://user:password@your-mongo-host:27017/
       - MongoDb__DatabaseName=gdrive-api
+      # Optional first-start secret; generate a random value and remove it after the admin is created.
+      # - Auth__InitialAdminToken=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
       - Google__FolderId=YOUR_GOOGLE_DRIVE_FOLDER_ID
       - Google__ClientId=YOUR_GOOGLE_OAUTH_CLIENT_ID
       - Google__ClientSecret=YOUR_GOOGLE_OAUTH_CLIENT_SECRET

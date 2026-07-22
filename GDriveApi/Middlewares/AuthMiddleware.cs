@@ -14,15 +14,21 @@ public class AuthMiddleware : Attribute, IAsyncActionFilter
         var mongoDb = context.HttpContext.RequestServices.GetRequiredService<MongoDbService>();
 
         var authHeader = context.HttpContext.Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        if (string.IsNullOrEmpty(authHeader)
+            || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
             context.Result = new UnauthorizedObjectResult(new { message = "Missing or invalid Authorization header. Use: Bearer <token>" });
             return;
         }
 
         var token = authHeader["Bearer ".Length..].Trim();
+        if (token.Length == 0)
+        {
+            context.Result = new UnauthorizedObjectResult(new { message = "Bearer token cannot be empty." });
+            return;
+        }
 
-        var filter = Builders<AuthToken>.Filter.Eq(t => t.Token, token)
+        var filter = Builders<AuthToken>.Filter.Eq(t => t.Token, AuthToken.Hash(token))
             & Builders<AuthToken>.Filter.Eq(t => t.IsActive, true);
 
         var found = await mongoDb.AuthTokens.Find(filter).FirstOrDefaultAsync();

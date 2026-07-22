@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using GDriveApi.Dtos;
@@ -15,6 +16,18 @@ public class FileManagerService(
 {
     private const string SlugChars = "abcdefghijklmnopqrstuvwxyz0123456789";
 
+    private static async Task TryRollbackAsync(Func<Task> rollback, string description)
+    {
+        try
+        {
+            await rollback();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Rollback] Failed to {description}: {ex.Message}");
+        }
+    }
+
     private static string GenerateRandomSlug(int length)
     {
         if (length < 3) length = 3;
@@ -31,7 +44,7 @@ public class FileManagerService(
 
     private static string ResolveSlug(string? slug, int slugLength)
     {
-        return string.IsNullOrWhiteSpace(slug) ? GenerateRandomSlug(slugLength) : slug;
+        return string.IsNullOrWhiteSpace(slug) ? GenerateRandomSlug(slugLength) : slug.Trim();
     }
 
     private FileDto ToDto(UploadEntry e, string? uploaderName = null) => new()
@@ -105,41 +118,76 @@ public class FileManagerService(
     {
         var slug = ResolveSlug(request.Slug, request.SlugLength);
         var displayName = ResolveDisplayName(request);
-
         var skipImageServing = request.SkipImageServing ?? false;
-        var gdResult = await googleDriveService.UploadFileAsync(request.File, displayName, skipImageServing);
+        var collection = string.IsNullOrWhiteSpace(request.Collection) ? "default" : request.Collection.Trim();
 
-        var shlinkResult = await shlinkService.CreateShortUrlAsync(
-            gdResult.LongUrl, slug, request.Title, request.Crawlable);
+        GoogleDriveUploadResult? gdResult = null;
+        ShlinkResult? shlinkResult = null;
+        UploadEntry? entry = null;
+        var collectionIncremented = false;
 
-        var entry = new UploadEntry
+        try
         {
-            Slug = shlinkResult.ShortCode,
-            FileName = displayName,
-            ContentType = request.File.ContentType,
-            FileSize = request.File.Length,
-            GoogleDriveFileId = gdResult.GoogleDriveFileId,
-            ShortUrl = shlinkResult.ShortUrl,
-            LongUrl = shlinkResult.LongUrl,
-            Collection = request.Collection,
-            Title = shlinkResult.Title,
-            Crawlable = shlinkResult.Crawlable,
-            OwnerId = currentUser.Id,
-            SkipImageServing = skipImageServing,
-            CreatedAt = DateTime.UtcNow
-        };
+            gdResult = await googleDriveService.UploadFileAsync(request.File, displayName, skipImageServing);
+            shlinkResult = await shlinkService.CreateShortUrlAsync(
+                gdResult.LongUrl, slug, request.Title, request.Crawlable);
 
-        await mongoDb.Uploads.InsertOneAsync(entry);
+            entry = new UploadEntry
+            {
+                Slug = shlinkResult.ShortCode,
+                FileName = displayName,
+                ContentType = request.File.ContentType,
+                FileSize = request.File.Length,
+                GoogleDriveFileId = gdResult.GoogleDriveFileId,
+                ShortUrl = shlinkResult.ShortUrl,
+                LongUrl = shlinkResult.LongUrl,
+                Collection = collection,
+                Title = shlinkResult.Title,
+                Crawlable = shlinkResult.Crawlable,
+                OwnerId = currentUser.Id,
+                SkipImageServing = skipImageServing,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        await mongoDb.Collections.UpdateOneAsync(
-            Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection),
-            Builders<CollectionEntry>.Update
-                .Inc(c => c.FileCount, 1)
-                .Set(c => c.UpdatedAt, DateTime.UtcNow)
-                .SetOnInsert(c => c.CreatedAt, DateTime.UtcNow),
-            new UpdateOptions { IsUpsert = true });
+            await mongoDb.Uploads.InsertOneAsync(entry);
+            await mongoDb.Collections.UpdateOneAsync(
+                Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection),
+                Builders<CollectionEntry>.Update
+                    .Inc(c => c.FileCount, 1)
+                    .Set(c => c.UpdatedAt, DateTime.UtcNow)
+                    .SetOnInsert(c => c.CreatedAt, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true });
+            collectionIncremented = true;
 
-        return ToDto(entry, currentUser.Username);
+            return ToDto(entry, currentUser.Username);
+        }
+        catch
+        {
+            if (entry is not null)
+                await TryRollbackAsync(
+                    () => mongoDb.Uploads.DeleteOneAsync(Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id)),
+                    $"remove upload record '{entry.Slug}'");
+            if (collectionIncremented && entry is not null)
+                await TryRollbackAsync(async () =>
+                {
+                    await mongoDb.Collections.UpdateOneAsync(
+                        Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection),
+                        Builders<CollectionEntry>.Update.Inc(c => c.FileCount, -1));
+                    await mongoDb.Collections.DeleteOneAsync(
+                        Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection)
+                        & Builders<CollectionEntry>.Filter.Lte(c => c.FileCount, 0));
+                }, $"restore collection '{entry.Collection}'");
+            if (shlinkResult is not null)
+                await TryRollbackAsync(
+                    () => shlinkService.DeleteShortUrlAsync(shlinkResult.ShortCode),
+                    $"delete short URL '{shlinkResult.ShortCode}'");
+            if (gdResult is not null)
+                await TryRollbackAsync(
+                    () => googleDriveService.DeleteFileAsync(gdResult.GoogleDriveFileId),
+                    $"delete Google Drive file '{gdResult.GoogleDriveFileId}'");
+
+            throw;
+        }
     }
 
     public async Task<FileDto> GetFileInfoAsync(string slug)
@@ -152,21 +200,6 @@ public class FileManagerService(
         return await ToDtoWithUsername(entry);
     }
 
-    public async Task<List<string>> GetSlugsAsync(string? collection, int page, int pageSize)
-    {
-        var filter = string.IsNullOrWhiteSpace(collection)
-            ? Builders<UploadEntry>.Filter.Empty
-            : Builders<UploadEntry>.Filter.Eq(e => e.Collection, collection);
-
-        return await mongoDb.Uploads
-            .Find(filter)
-            .SortByDescending(e => e.CreatedAt)
-            .Skip((page - 1) * pageSize)
-            .Limit(pageSize)
-            .Project(e => e.Slug)
-            .ToListAsync();
-    }
-
     public async Task DeleteFileAsync(string slug, AuthToken currentUser)
     {
         var entry = await mongoDb.Uploads
@@ -176,29 +209,54 @@ public class FileManagerService(
 
         EnforceOwnership(entry, currentUser);
 
-        await googleDriveService.DeleteFileAsync(entry.GoogleDriveFileId);
+        var claimTime = DateTime.UtcNow;
+        // ponytail: five minutes is the stale-claim ceiling; make it configurable only for slower external deletes.
+        var staleClaim = claimTime.AddMinutes(-5);
+        var availableForDelete = Builders<UploadEntry>.Filter.Ne(e => e.IsDeleting, true)
+            | Builders<UploadEntry>.Filter.Lt(e => e.DeleteClaimedAt, staleClaim)
+            | Builders<UploadEntry>.Filter.Eq(e => e.DeleteClaimedAt, null);
+        var claimResult = await mongoDb.Uploads.UpdateOneAsync(
+            Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id)
+            & Builders<UploadEntry>.Filter.Eq(e => e.Slug, slug)
+            & availableForDelete,
+            Builders<UploadEntry>.Update
+                .Set(e => e.IsDeleting, true)
+                .Set(e => e.DeleteClaimedAt, claimTime));
+
+        if (claimResult.MatchedCount == 0)
+            throw new DBConcurrencyException("File is already being modified or deleted. Retry the request.");
 
         try
         {
             await shlinkService.DeleteShortUrlAsync(entry.Slug);
+            await googleDriveService.DeleteFileAsync(entry.GoogleDriveFileId);
+            var deleteResult = await mongoDb.Uploads.DeleteOneAsync(
+                Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id));
+
+            if (deleteResult.DeletedCount == 1)
+            {
+                await mongoDb.Collections.UpdateOneAsync(
+                    Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection),
+                    Builders<CollectionEntry>.Update
+                        .Inc(c => c.FileCount, -1)
+                        .Set(c => c.UpdatedAt, DateTime.UtcNow));
+                await mongoDb.Collections.DeleteOneAsync(
+                    Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection)
+                    & Builders<CollectionEntry>.Filter.Lte(c => c.FileCount, 0));
+            }
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"[Shlink] Failed to delete short URL '{slug}': {ex.Message}");
+            await TryRollbackAsync(
+                () => mongoDb.Uploads.UpdateOneAsync(
+                    Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id)
+                    & Builders<UploadEntry>.Filter.Eq(e => e.DeleteClaimedAt, claimTime),
+                    Builders<UploadEntry>.Update
+                        .Set(e => e.IsDeleting, false)
+                        .Unset(e => e.DeleteClaimedAt)),
+                $"release deletion claim for '{slug}'");
+            throw;
         }
-
-        await mongoDb.Uploads.DeleteOneAsync(
-            Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id));
-
-        await mongoDb.Collections.UpdateOneAsync(
-            Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection),
-            Builders<CollectionEntry>.Update
-                .Inc(c => c.FileCount, -1)
-                .Set(c => c.UpdatedAt, DateTime.UtcNow));
-
-        await mongoDb.Collections.DeleteOneAsync(
-            Builders<CollectionEntry>.Filter.Eq(c => c.Name, entry.Collection)
-            & Builders<CollectionEntry>.Filter.Lte(c => c.FileCount, 0));
     }
 
     public async Task<FileDto> UpdateFileAsync(string slug, UpdateFileRequest request, AuthToken currentUser)
@@ -209,6 +267,10 @@ public class FileManagerService(
             ?? throw new KeyNotFoundException($"File with slug '{slug}' not found.");
 
         EnforceOwnership(entry, currentUser);
+        if (entry.IsDeleting)
+            throw new DBConcurrencyException("File is being deleted. Retry the request.");
+
+        var newSlug = string.IsNullOrWhiteSpace(request.NewSlug) ? null : request.NewSlug.Trim();
 
         var skipImageServingChanged = request.SkipImageServing.HasValue
             && request.SkipImageServing.Value != entry.SkipImageServing
@@ -224,11 +286,11 @@ public class FileManagerService(
 
         var effectiveLongUrl = newLongUrl ?? entry.LongUrl;
 
-        if (!string.IsNullOrWhiteSpace(request.NewSlug) && request.NewSlug != slug)
+        if (newSlug is not null && newSlug != slug)
         {
             var shlinkResult = await shlinkService.CreateShortUrlAsync(
                 effectiveLongUrl,
-                request.NewSlug,
+                newSlug,
                 request.Title ?? entry.Title,
                 request.Crawlable ?? entry.Crawlable);
 
@@ -247,8 +309,22 @@ public class FileManagerService(
                         .Set(e => e.LongUrl, effectiveLongUrl);
                 }
 
-                await mongoDb.Uploads.UpdateOneAsync(
-                    Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id), update);
+                var updateFilter = Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id)
+                    & Builders<UploadEntry>.Filter.Eq(e => e.Slug, slug)
+                    & Builders<UploadEntry>.Filter.Ne(e => e.IsDeleting, true)
+                    & Builders<UploadEntry>.Filter.Eq(e => e.Title, entry.Title)
+                    & Builders<UploadEntry>.Filter.Eq(e => e.Crawlable, entry.Crawlable);
+
+                if (skipImageServingChanged)
+                {
+                    updateFilter &= Builders<UploadEntry>.Filter.Eq(e => e.LongUrl, entry.LongUrl)
+                        & Builders<UploadEntry>.Filter.Eq(e => e.SkipImageServing, entry.SkipImageServing);
+                }
+
+                var updateResult = await mongoDb.Uploads.UpdateOneAsync(updateFilter, update);
+
+                if (updateResult.MatchedCount == 0)
+                    throw new DBConcurrencyException("File was modified concurrently. Retry the request.");
             }
             catch
             {
@@ -297,14 +373,58 @@ public class FileManagerService(
 
                 if (updates.Count > 0)
                 {
-                    await mongoDb.Uploads.UpdateOneAsync(
-                        Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id),
-                        Builders<UploadEntry>.Update.Combine(updates));
+                    var updateFilter = Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id)
+                        & Builders<UploadEntry>.Filter.Eq(e => e.Slug, slug)
+                        & Builders<UploadEntry>.Filter.Ne(e => e.IsDeleting, true);
+
+                    if (request.Title != null)
+                        updateFilter &= Builders<UploadEntry>.Filter.Eq(e => e.Title, entry.Title);
+                    if (request.Crawlable.HasValue)
+                        updateFilter &= Builders<UploadEntry>.Filter.Eq(e => e.Crawlable, entry.Crawlable);
+                    if (skipImageServingChanged)
+                    {
+                        updateFilter &= Builders<UploadEntry>.Filter.Eq(e => e.LongUrl, entry.LongUrl)
+                            & Builders<UploadEntry>.Filter.Eq(e => e.SkipImageServing, entry.SkipImageServing);
+                    }
+
+                    try
+                    {
+                        var updateResult = await mongoDb.Uploads.UpdateOneAsync(
+                            updateFilter, Builders<UploadEntry>.Update.Combine(updates));
+
+                        if (updateResult.MatchedCount == 0)
+                            throw new DBConcurrencyException("File was modified concurrently. Retry the request.");
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            var current = await mongoDb.Uploads
+                                .Find(Builders<UploadEntry>.Filter.Eq(e => e.Id, entry.Id))
+                                .FirstOrDefaultAsync();
+
+                            if (current is { IsDeleting: false } && current.Slug == slug)
+                            {
+                                await shlinkService.UpdateShortUrlAsync(
+                                    slug,
+                                    newLongUrl is not null ? current.LongUrl : null,
+                                    request.Title != null ? current.Title ?? string.Empty : null,
+                                    request.Crawlable.HasValue ? current.Crawlable ?? false : null);
+                            }
+                        }
+                        catch (Exception rollbackEx)
+                        {
+                            Console.WriteLine(
+                                $"[Shlink] Failed to resync short URL '{slug}' after Mongo update error: {rollbackEx.Message}");
+                        }
+
+                        throw;
+                    }
                 }
             }
         }
 
-        return await GetFileInfoAsync(request.NewSlug ?? slug);
+        return await GetFileInfoAsync(newSlug ?? slug);
     }
 
     public async Task<List<CollectionDto>> GetCollectionsAsync()
@@ -323,15 +443,32 @@ public class FileManagerService(
         }).ToList();
     }
 
-    public async Task<List<FileDto>> GetFilesByCollectionAsync(string collection)
+    public async Task<List<FileDto>> GetFilesByCollectionAsync(string collection, int? page, int? pageSize)
     {
-        var entries = await mongoDb.Uploads
-            .Find(Builders<UploadEntry>.Filter.Eq(e => e.Collection, collection))
-            .SortByDescending(e => e.CreatedAt)
-            .ToListAsync();
+        IFindFluent<UploadEntry, UploadEntry> query = mongoDb.Uploads
+            .Find(Builders<UploadEntry>.Filter.Eq(e => e.Collection, collection)
+                & Builders<UploadEntry>.Filter.Ne(e => e.IsDeleting, true))
+            .SortByDescending(e => e.CreatedAt);
 
-        var tasks = entries.Select(ToDtoWithUsername);
-        var results = await Task.WhenAll(tasks);
-        return results.ToList();
+        if (page.HasValue || pageSize.HasValue)
+        {
+            var effectivePage = page ?? 1;
+            var effectivePageSize = pageSize ?? 100;
+            query = query.Skip((effectivePage - 1) * effectivePageSize).Limit(effectivePageSize);
+        }
+
+        var entries = await query.ToListAsync();
+        if (entries.Count == 0)
+            return [];
+
+        var ownerIds = entries.Select(e => e.OwnerId).Distinct().ToList();
+        var users = await mongoDb.AuthTokens
+            .Find(Builders<AuthToken>.Filter.In(t => t.Id, ownerIds))
+            .ToListAsync();
+        var usernames = users.ToDictionary(u => u.Id, u => u.Username);
+
+        return entries
+            .Select(e => ToDto(e, usernames.GetValueOrDefault(e.OwnerId, "unknown")))
+            .ToList();
     }
 }

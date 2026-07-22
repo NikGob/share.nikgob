@@ -1,0 +1,14 @@
+.git
+.github
+.vs
+**/bin
+**/obj
+**/appsettings*.json
+**/google-credentials*.json
+docker-compose*.yml
+.env
+.env.*
+**/*.pfx
+**/*.p12
+**/*.pem
+**/*.key

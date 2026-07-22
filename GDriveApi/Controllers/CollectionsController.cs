@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using GDriveApi.Interfaces;
 using GDriveApi.Middlewares;
 using Microsoft.AspNetCore.Mvc;
@@ -26,11 +27,14 @@ public class CollectionsController(IFileManagerService fileManager) : Controller
     }
 
     [HttpGet("{name}")]
-    public async Task<IActionResult> GetByCollection(string name)
+    public async Task<IActionResult> GetByCollection(
+        string name,
+        [FromQuery, Range(1, 1_000_000)] int? page = null,
+        [FromQuery, Range(1, 500)] int? pageSize = null)
     {
         try
         {
-            var files = await fileManager.GetFilesByCollectionAsync(name);
+            var files = await fileManager.GetFilesByCollectionAsync(name, page, pageSize);
             return Ok(files);
         }
         catch (Exception ex)
